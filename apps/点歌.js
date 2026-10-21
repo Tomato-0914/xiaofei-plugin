@@ -434,42 +434,24 @@ async function music_message(e) {
 	if (reg) {
 		if (e.source && (reg[1]?.includes('语音') || reg[1]?.includes('下载音乐'))) {
 			let source;
-			if (e.isGroup) {
-				source = (await e.group.getChatHistory(e.source.seq, 1)).pop();
-			} else {
-				source = (await e.friend.getChatHistory(e.source.time, 1)).pop();
-			}
+			try {
+				if (!e.bot?.sendUni && typeof e.getReply == 'function') {
+					source = await e.getReply();
+				} else if (e.isGroup) {
+					source = (await e.group.getChatHistory(e.source.seq, 1)).pop();
+				} else {
+					source = (await e.friend.getChatHistory(e.source.time, 1)).pop();
+				}
+			} catch (err) { }
 			if (source && source['message'][0]['type'] == 'json') {
 				try {
-					let music_json = JSON.parse(source['message'][0]['data']);
+					let json_data = source['message'][0]['data'];
+					if (typeof json_data == 'object') json_data = json_data.data;
+					let music_json = typeof json_data == 'string' ? JSON.parse(json_data) : json_data;
 					if (music_json['view'] == 'music') {
 						let music = music_json.meta.music;
 
-						await e.reply('开始上传[' + music.title + '-' + music.desc + ']。。。');
-						let result, isHigh
-						try {
-							result = await uploadRecord(e, music.musicUrl, 0, !reg[1].includes('高清'), music.title + '-' + music.desc);
-							isHigh = true
-						} catch (error) {
-							logger.error(error)
-							result = await segment.record(await toSilk(music.musicUrl) || music.musicUrl);
-							isHigh = false
-						}
-						if (!isHigh) {
-							const tip = '上传[' + music.title + '-' + music.desc + ']失败！\n' + '链接：' + music.musicUrl + '\n尝试上传普通语音'
-							await e.reply(tip);
-						}
-						result = await e.reply(result);
-						if (reg[1].includes('高清') && result && isHigh) {
-							try {
-								let message = await (Bot || e.bot || e.group || e.friend)?.getMsg(result.message_id);
-								if (Array.isArray(message.message)) message.message.push({ type: 'text', text: '[语音]' });
-								await (e.group || e.friend)?.sendMsg('PCQQ不要播放，否则会导致语音无声音！', message);
-							} catch (err) {
-								let message = [await segment.reply(result.message_id), `PCQQ不要播放，否则会导致语音无声音！`];
-								await (e.group || e.friend)?.sendMsg(message);
-							}
-						}
+						await send_music_record(e, music.musicUrl, reg[1], music.title + '-' + music.desc);
 					}
 				} catch (err) { }
 				return true;
@@ -503,31 +485,7 @@ async function music_message(e) {
 						return true;
 					}
 
-					await e.reply('开始上传[' + music.name + '-' + music.artist + ']。。。');
-					let result, isHigh
-					try {
-						result = await uploadRecord(e, music_json.meta.music.musicUrl, 0, !reg[1].includes('高清'), music.name + '-' + music.artist);
-						isHigh = true
-					} catch (error) {
-						logger.error(error)
-						result = await segment.record(await toSilk(music_json.meta.music.musicUrl) || music_json.meta.music.musicUrl);
-						isHigh = false
-					}
-					if (!isHigh) {
-						const tip = '上传[' + music.name + '-' + music.artist + ']失败！\n' + '链接：' + music_json.meta.music.musicUrl + '\n尝试上传普通语音'
-						await e.reply(tip);
-					}
-					result = await e.reply(result)
-					if (reg[1].includes('高清') && result && isHigh) {
-						try {
-							let message = await (Bot || e.bot || e.group || e.friend)?.getMsg(result.message_id);
-							if (Array.isArray(message.message)) message.message.push({ type: 'text', text: '[语音]' });
-							await (e.group || e.friend)?.sendMsg('PCQQ不要播放，否则会导致语音无声音！', message);
-						} catch (err) {
-							let message = [await segment.reply(result.message_id), `PCQQ不要播放，否则会导致语音无声音！`];
-							await (e.group || e.friend)?.sendMsg(message);
-						}
-					}
+					await send_music_record(e, music_json.meta.music.musicUrl, reg[1], music.name + '-' + music.artist);
 					return true;
 				}
 				let body = await CreateMusicShare(e, music);
@@ -1787,6 +1745,68 @@ async function CreateMusicShare(e, data, to_uin = null) {
 		}
 	}
 	return body;
+}
+
+async function send_music_record(e, url, mode, brief) {
+	const isHigh = !!mode?.includes('高清');
+	// icqq：保留原生高清语音上传
+	if (e.bot?.sendUni) {
+		await e.reply('开始上传[' + brief + ']。。。');
+		let result;
+		try {
+			result = await uploadRecord(e, url, 0, !isHigh, brief);
+		} catch (error) {
+			logger.error(error);
+		}
+		if (!result) {
+			await e.reply('上传[' + brief + ']失败！\n' + '链接：' + url + '\n尝试上传普通语音');
+			return await send_normal_record(e, url);
+		}
+		result = await e.reply(result);
+		if (isHigh && result) {
+			try {
+				let message = await (Bot || e.bot || e.group || e.friend)?.getMsg(result.message_id);
+				if (Array.isArray(message.message)) message.message.push({ type: 'text', text: '[语音]' });
+				await (e.group || e.friend)?.sendMsg('PCQQ不要播放，否则会导致语音无声音！', message);
+			} catch (err) {
+				let message = [await segment.reply(result.message_id), `PCQQ不要播放，否则会导致语音无声音！`];
+				await (e.group || e.friend)?.sendMsg(message);
+			}
+		}
+		return result;
+	}
+	// OneBot 等协议：不支持高清语音，发送普通语音
+	await e.reply('开始上传[' + brief + ']。。。' + (isHigh ? '\n当前协议不支持高清语音，将发送普通语音' : ''));
+	return await send_normal_record(e, url);
+}
+
+async function send_normal_record(e, url) {
+	// 优先本地转码为silk发送，避免协议端下载/转码失败
+	let silk;
+	try {
+		if (toSilk) silk = await toSilk(url);
+	} catch (err) {
+		logger.error(err);
+	}
+	if (silk) {
+		let result, failed = false;
+		try {
+			result = await e.reply(segment.record(silk));
+		} catch (err) {
+			logger.error(err);
+			failed = true;
+		}
+		if (!failed && !is_send_failed(result)) return result;
+		logger.warn('【小飞插件】silk语音发送失败，尝试由协议端处理音频链接');
+	}
+	return await e.reply(segment.record(url));
+}
+
+function is_send_failed(result) {
+	if (!result) return false;
+	const message_id = result.message_id;
+	if (Array.isArray(message_id)) return message_id.length < 1;
+	return result.error && !message_id;
 }
 
 async function SendMusicShare(e, body) {
