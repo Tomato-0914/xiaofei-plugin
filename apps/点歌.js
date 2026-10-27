@@ -1690,7 +1690,8 @@ async function CreateMusicShare(e, data, to_uin = null) {
 
 	// QQBot 无法发送音乐卡片，改用 markdown 播放卡片
 	if (is_qqbot(e)) {
-		return { qqbot_card: { music: data, title, singer, preview, jumpUrl, musicUrl } };
+		let onebot = onebot_music_body(data, title, singer, preview, jumpUrl, musicUrl);
+		return { qqbot_card: { music: data, title, singer, preview, jumpUrl, musicUrl, onebot } };
 	}
 
 	let recv_uin = 0;
@@ -1737,18 +1738,43 @@ async function CreateMusicShare(e, data, to_uin = null) {
 	};
 
 	if (e.bot?.adapter === 'OneBotv11' || e.bot?.adapter?.name === 'OneBotv11') {
-		body = { type: "music", data: { id: data.id } };
-		switch (data.source) {
-			case 'netease':
-				body.data.type = "163"
-				break;
-			case 'qq':
-			default:
-				body.data = { type: "custom", url: jumpUrl, audio: musicUrl, title, image: preview, singer }
-				break;
-		}
+		body = onebot_music_body(data, title, singer, preview, jumpUrl, musicUrl);
 	}
 	return body;
+}
+
+function onebot_music_body(data, title, singer, preview, jumpUrl, musicUrl) {
+	let body = { type: "music", data: { id: data.id } };
+	switch (data.source) {
+		case 'netease':
+			body.data.type = "163"
+			break;
+		case 'qq':
+		default:
+			body.data = { type: "custom", url: jumpUrl, audio: musicUrl, title, image: preview, singer }
+			break;
+	}
+	return body;
+}
+
+/** QQBot-Plugin 野生号静默：静默群里找到同群的 OneBotv11 野生号 */
+function get_wild_bot(e) {
+	if (!e.isGroup || !e.group_id) return;
+	let cfg;
+	try {
+		cfg = JSON.parse(fs.readFileSync(`${process.cwd()}/data/wild-silence.json`, 'utf8'));
+	} catch (err) {
+		return;
+	}
+	if (!cfg?.enable || !(cfg.groups || []).map(Number).includes(Number(e.group_id))) return;
+	let wild = (cfg.wild || []).map(String);
+	for (let id of (Bot.uin || []).map(String)) {
+		let bot = Bot[id];
+		if (wild.length && !wild.includes(id)) continue;
+		if (bot?.adapter?.name !== 'OneBotv11' || !bot.pickGroup) continue;
+		if (bot.gl && !bot.gl.has(Number(e.group_id)) && !bot.gl.has(String(e.group_id))) continue;
+		return bot;
+	}
 }
 
 function is_qqbot(e) {
@@ -1818,6 +1844,19 @@ function escape_markdown(text) {
 
 async function send_qqbot_music_card(e, card) {
 	let { music, title, singer, preview, jumpUrl, musicUrl } = card;
+
+	// 野生号静默的群里，音乐卡片交给同群的野生号发送
+	let wild = card.onebot && get_wild_bot(e);
+	if (wild) {
+		try {
+			let result = await wild.pickGroup(Number(e.group_id)).sendMsg(card.onebot);
+			if (result && !is_send_failed(result)) return result;
+		} catch (err) {
+			logger.error(err);
+		}
+		logger.warn('【小飞插件】野生号发送音乐卡片失败，改为发送markdown卡片');
+	}
+
 	let id = Date.now().toString(36) + crypto.randomBytes(2).toString('hex');
 	xiaofei_plugin.music_card_cache[id] = { music, title, singer, musicUrl, time: new Date().getTime() };
 

@@ -3,6 +3,7 @@
 * `#点歌`
 	* 语音适配OneBotv11协议（LLOneBot、NapCat等），icqq保留原生高清语音上传
 	* QQBot使用markdown播放卡片代替音乐卡片（封面、歌手、专辑、歌词节选，支持播放/打开播放器/完整歌词按钮）
+	* 配合QQBot-Plugin野生号静默：静默群里QQBot点歌的音乐卡片改由同群的OneBotv11野生号发送，失败时发送markdown卡片
 
 # 1.9.0
 * `部分功能适配YunzaiV4`
