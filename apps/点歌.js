@@ -10,6 +10,8 @@ try { toSilk = (await import('../model/toSilk.js')).default; } catch { };
 const no_pic = '';
 var _page_size = 20;
 var _music_timeout = 1000 * 60 * 3;
+var _music_card_timeout = 1000 * 60 * 30;
+const music_card_reg = /^#?小飞卡片(播放|歌词)\s*([0-9a-z]+)$/;
 const music_source = {
 	'哔哩哔哩': 'bilibili',
 	'哔哩': 'bilibili',
@@ -178,6 +180,10 @@ export class xiaofei_music extends plugin {
 	}
 
 	async music_task(e) {
+		let card_cache = xiaofei_plugin.music_card_cache;
+		for (let key in card_cache) {
+			if ((new Date().getTime() - card_cache[key].time) > _music_card_timeout) delete card_cache[key];
+		}
 		let data = xiaofei_plugin.music_temp_data;
 		for (let key in data) {
 			if ((new Date().getTime() - data[key].time) > _music_timeout) {
@@ -199,6 +205,10 @@ export class xiaofei_music extends plugin {
 
 	/** 接受到消息都会先执行一次 */
 	accept() {
+		if (music_card_reg.test(this.e.msg)) {
+			music_card_action(this.e);
+			return;
+		}
 		if (/^#?(小飞语音|小飞高清语音|小飞歌词|语音|高清语音|歌词|下载音乐)?(\d+)?$/.test(this.e.msg)) {
 			music_message(this.e);
 		}
@@ -353,6 +363,10 @@ if (!xiaofei_plugin.music_poke_cd) {
 	xiaofei_plugin.music_poke_cd = {};
 }
 
+if (!xiaofei_plugin.music_card_cache) {
+	xiaofei_plugin.music_card_cache = {};
+}
+
 if (xiaofei_plugin.music_guild) Bot.off('guild.message', xiaofei_plugin.music_guild);
 xiaofei_plugin.music_guild = async (e) => {//处理频道消息
 	e.msg = e.raw_message;
@@ -491,15 +505,7 @@ async function music_message(e) {
 				let body = await CreateMusicShare(e, music);
 				await SendMusicShare(e, body);
 			} else {
-				try {
-					typeof (music.lrc) == 'function' ? music.lrc = await music.lrc(music.data) : music.lrc = music.lrc;
-					if (music.lrc == null && typeof (music.api) == 'function') {
-						await music.api(music.data, ['lrc'], music);
-					}
-				} catch (err) { }
-
-				let lrcs = music.lrc || '没有查询到这首歌的歌词！';
-				if (!Array.isArray(lrcs)) lrcs = [lrcs];
+				let lrcs = await get_music_lrc(music);
 
 				let user_info = {
 					nickname: e.bot?.nickname || Bot?.nickname,
@@ -508,14 +514,7 @@ async function music_message(e) {
 				let MsgList = [];
 
 				for (let lrc of lrcs) {
-					let lrc_text = [];
-					let lrc_reg = /\[.*\](.*)?/gm;
-					let exec;
-					while (exec = lrc_reg.exec(lrc)) {
-						if (exec[1]) {
-							lrc_text.push(exec[1]);
-						}
-					}
+					let lrc_text = lrc_to_lines(lrc);
 					if (lrc_text.length > 0) {
 						MsgList.push({
 							...user_info,
@@ -1689,6 +1688,11 @@ async function CreateMusicShare(e, data, to_uin = null) {
 		prompt = '[分享]' + title + '-' + singer;
 	}
 
+	// QQBot 无法发送音乐卡片，改用 markdown 播放卡片
+	if (is_qqbot(e)) {
+		return { qqbot_card: { music: data, title, singer, preview, jumpUrl, musicUrl } };
+	}
+
 	let recv_uin = 0;
 	let send_type = 0;
 	let recv_guild_id = 0;
@@ -1745,6 +1749,131 @@ async function CreateMusicShare(e, data, to_uin = null) {
 		}
 	}
 	return body;
+}
+
+function is_qqbot(e) {
+	return e.bot?.adapter?.id === 'QQBot' || e.bot?.adapter?.name === 'QQBot';
+}
+
+async function get_music_lrc(music) {
+	try {
+		typeof (music.lrc) == 'function' ? music.lrc = await music.lrc(music.data) : music.lrc = music.lrc;
+		if (music.lrc == null && typeof (music.api) == 'function') {
+			await music.api(music.data, ['lrc'], music);
+		}
+	} catch (err) { }
+
+	let lrcs = music.lrc || '没有查询到这首歌的歌词！';
+	if (!Array.isArray(lrcs)) lrcs = [lrcs];
+	return lrcs;
+}
+
+function lrc_to_lines(lrc) {
+	let lrc_text = [];
+	let lrc_reg = /\[.*\](.*)?/gm;
+	let exec;
+	while (exec = lrc_reg.exec(lrc)) {
+		if (exec[1]) {
+			lrc_text.push(exec[1]);
+		}
+	}
+	return lrc_text;
+}
+
+function get_music_album(music) {
+	let data = music.data || {};
+	let album;
+	switch (music.source) {
+		case 'qq':
+			album = data.album?.name || data.album?.title;
+			break;
+		case 'netease':
+			album = data.al?.name;
+			break;
+		case 'kuwo':
+			album = data.ALBUM;
+			break;
+		case 'kugou':
+			album = data.album_name;
+			break;
+	}
+	return typeof (album) == 'string' ? album.replace(/\<.*?\>/g, '').trim() : '';
+}
+
+function get_music_player_link(music, jumpUrl) {
+	switch (music.source) {
+		case 'qq':
+			if (music.data?.mid) return `https://i.y.qq.com/v8/playsong.html?songmid=${music.data.mid}`;
+			break;
+		case 'netease':
+			if (music.id) return `https://y.music.163.com/m/song?id=${music.id}`;
+			break;
+	}
+	return typeof (jumpUrl) == 'string' && /^https?:\/\//.test(jumpUrl) ? jumpUrl : '';
+}
+
+function escape_markdown(text) {
+	return String(text || '').replace(/([\\`*_\[\]~])/g, '\\$1');
+}
+
+async function send_qqbot_music_card(e, card) {
+	let { music, title, singer, preview, jumpUrl, musicUrl } = card;
+	let id = Date.now().toString(36) + crypto.randomBytes(2).toString('hex');
+	xiaofei_plugin.music_card_cache[id] = { music, title, singer, musicUrl, time: new Date().getTime() };
+
+	let album = get_music_album(music);
+	let lines = [];
+	for (let lrc of await get_music_lrc(music)) {
+		lines = lrc_to_lines(lrc).filter(line => line.trim() && !/[:：]/.test(line) && !(line.includes(' - ') && line.includes(title)));
+		if (lines.length) break;
+	}
+
+	let content = [];
+	if (preview) content.push(`![封面 #150px #150px](${preview})`);
+	content.push(`# ${escape_markdown(title)}`);
+	if (singer) content.push(`**歌手**：${escape_markdown(singer)}`);
+	if (album) content.push(`**专辑**：${escape_markdown(album)}`);
+	if (lines.length) content.push(lines.slice(0, 4).map(line => `> ${escape_markdown(line)}`).join('\n\n'));
+
+	let buttons = [];
+	if (musicUrl) buttons.push({ text: '▶ 播放', callback: `#小飞卡片播放${id}` });
+	let player = get_music_player_link(music, jumpUrl);
+	if (player) buttons.push({ text: '🎧 打开播放器', link: player });
+	let rows = [buttons, [{ text: '📜 完整歌词', callback: `#小飞卡片歌词${id}` }]].filter(row => row.length);
+
+	let result, failed = false;
+	try {
+		result = await e.reply([{ type: 'markdown', data: content.join('\n\n') }, { type: 'button', data: rows }]);
+	} catch (err) {
+		logger.error(err);
+		failed = true;
+	}
+	if (!failed && !is_send_failed(result)) return result;
+
+	// markdown 发送失败时发送普通消息
+	logger.warn('【小飞插件】音乐markdown卡片发送失败，改为发送普通消息');
+	let text = `${title}${singer ? ' - ' + singer : ''}${album ? '\n专辑：' + album : ''}\n发送【#小飞卡片播放${id}】播放，【#小飞卡片歌词${id}】查看歌词`;
+	return await e.reply(preview ? [segment.image(preview), text] : text);
+}
+
+async function music_card_action(e) {
+	let reg = music_card_reg.exec(e.msg);
+	let card = xiaofei_plugin.music_card_cache[reg[2]];
+	if (!card) return await e.reply('该歌曲卡片已过期，请重新点歌！', true);
+
+	if (reg[1] == '播放') {
+		if (!card.musicUrl) return await e.reply('[' + card.title + ']获取播放地址失败！', true);
+		return await send_normal_record(e, card.musicUrl);
+	}
+
+	let lines = [];
+	for (let lrc of await get_music_lrc(card.music)) {
+		lines = lrc_to_lines(lrc);
+		if (lines.length) break;
+	}
+	if (!lines.length) return await e.reply('没有查询到这首歌的歌词！', true);
+	let content = `**${escape_markdown(card.title)}${card.singer ? ' - ' + escape_markdown(card.singer) : ''}**\n\n` + lines.slice(0, 100).map(line => escape_markdown(line) || '​').join('\n\n');
+	return await e.reply({ type: 'markdown', data: content });
 }
 
 async function send_music_record(e, url, mode, brief) {
@@ -1810,6 +1939,7 @@ function is_send_failed(result) {
 }
 
 async function SendMusicShare(e, body) {
+	if (body?.qqbot_card) return await send_qqbot_music_card(e, body.qqbot_card), true
 	if (e.bot?.adapter === 'OneBotv11' || e.bot?.adapter?.name === 'OneBotv11') return await e.reply(body), true
 	if (!e.bot.sendOidb) return await e.reply("当前协议不支持分享音乐card"), false;
 	let payload = await e.bot.sendOidb("OidbSvc.0xb77_9", core.pb.encode(body));
