@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import fetch from "node-fetch";
 import { Config, Data, Version, Plugin_Path } from '../components/index.js';
 import uploadRecord from '../model/uploadRecord.js';
+import { qqmusicLogin, neteaseLogin } from '../model/musicLogin.js';
 
 let toSilk
 try { toSilk = (await import('../model/toSilk.js')).default; } catch { };
@@ -105,6 +106,8 @@ var music_cookies = {
 	}
 };
 
+const music_qrlogin_reg = /^#?(QQ音乐|qq音乐|网易云音乐|网易云|网易)(ck)?扫码(登录|登陆)?$/;
+const music_qrlogin_running = {};
 const music_reg = '^#?(小飞)?(' + Object.keys(music_source).join('|') + '|多选)?(' + Object.keys(music_source).join('|') + '|多选)?(点播音乐|点播|点歌|播放|放一?首|来一?首|下一页|个性电台|每日推荐|每日30首|日推|我的收藏|我喜欢的歌)(.*)$';
 export class xiaofei_music extends plugin {
 	constructor() {
@@ -123,6 +126,13 @@ export class xiaofei_music extends plugin {
 					reg: '^#?(点歌|音乐)(ck|cookie)(检查|状态)$',
 					/** 执行方法 */
 					fnc: 'music_ck_check',
+					permission: 'master'
+				},
+				{
+					/** 命令正则匹配 */
+					reg: music_qrlogin_reg,
+					/** 执行方法 */
+					fnc: 'music_qrlogin',
 					permission: 'master'
 				},
 				{
@@ -263,6 +273,67 @@ export class xiaofei_music extends plugin {
 		await e.reply(forwardMsg);
 		return true;
 	}
+	async music_qrlogin(e) {
+		let name = music_qrlogin_reg.exec(e.msg)[1];
+		let key = /qq/i.test(name) ? 'qqmusic' : 'netease';
+		let login = key == 'qqmusic' ? qqmusicLogin : neteaseLogin;
+		if (music_qrlogin_running[key]) {
+			await e.reply(`${login.name}扫码登录正在进行中，请先完成或等待二维码过期`);
+			return true;
+		}
+		music_qrlogin_running[key] = true;
+		try {
+			let qr;
+			try {
+				qr = await login.create();
+			} catch (err) {
+				await e.reply(`${err.message || err}`);
+				return true;
+			}
+			let msg = [`请使用${login.app}扫描二维码登录${login.name}（2分钟内有效）`, segment.image(`base64://${qr.image}`)];
+			if (e.isGroup) msg.push('\n注意：二维码在群内可被任何人扫描，建议私聊机器人使用');
+			await e.reply(msg);
+
+			let scanned = false;
+			let start = Date.now();
+			while (Date.now() - start < 1000 * 60 * 2.5) {
+				await sleep(2000);
+				let result;
+				try {
+					result = await login.check(qr.state);
+				} catch (err) {
+					logger.error(`【小飞插件_${login.name}扫码登录】`, err);
+					continue;
+				}
+				switch (result.status) {
+					case 'waiting':
+						continue;
+					case 'scanned':
+						if (!scanned) {
+							scanned = true;
+							await e.reply(`已扫码，请在${login.app}上确认登录`);
+						}
+						continue;
+					case 'expired':
+						await e.reply(`${login.name}登录二维码已过期，请重新发送【${e.msg.replace(/^#?/, '#')}】`);
+						return true;
+					case 'refused':
+						await e.reply(`已取消${login.name}登录`);
+						return true;
+					case 'done':
+						return await save_music_qrlogin_ck(e, key, result.cookies);
+					default:
+						await e.reply(`${login.name}扫码登录失败：${result.msg || '未知错误'}`);
+						return true;
+				}
+			}
+			await e.reply(`${login.name}登录二维码已过期，请重新发送【${e.msg.replace(/^#?/, '#')}】`);
+		} finally {
+			delete music_qrlogin_running[key];
+		}
+		return true;
+	}
+
 	async submit_music_ck(e) {
 		let reg = /^#?提交(音乐|点歌)ck(.*)$/.exec(e.msg);
 		if (reg) {
@@ -308,6 +379,7 @@ export class xiaofei_music extends plugin {
 		};
 
 		let msgs = ['格式：#提交音乐ck+音乐ck'];
+		msgs.push(`也可以扫码自动获取：#QQ音乐扫码登录、#网易云扫码登录`);
 		msgs.push(`---QQ音乐ck说明---`);
 		msgs.push(`请前往：http://y.qq.com/ 获取以下ck：`);
 		msgs.push(`QQ登录必须参数：uin=; psrf_qqopenid=; psrf_qqunionid=; psrf_qqrefresh_token=; qm_keyst=; qqmusic_key=;`);
@@ -328,6 +400,30 @@ export class xiaofei_music extends plugin {
 		return true;
 	}
 
+}
+
+async function save_music_qrlogin_ck(e, key, cookies) {
+	if (key == 'qqmusic') {
+		let result = await get_qqmusic_userinfo(cookies);
+		music_cookies.qqmusic.ck = cookies;
+		music_cookies.qqmusic.update_time = 0;
+		music_cookies.qqmusic.init = false;
+		try {
+			await update_qqmusic_ck();
+		} catch (err) { }
+		let data = result.data;
+		await e.reply(result.code == 1
+			? `QQ音乐扫码登录成功，ck已保存！\n账号：${data.nickname}[${data.userid}]\n是否VIP：${data.is_vip ? '是' : '否'}`
+			: `QQ音乐扫码登录成功，ck已保存！\n账号：${cookies.get('uin')}`);
+	} else {
+		let result = await get_netease_userinfo(cookies);
+		music_cookies.netease.ck = cookies;
+		let data = result.data;
+		await e.reply(result.code == 1
+			? `网易云音乐扫码登录成功，ck已保存！\n账号：${data.nickname}[${data.userid}]\n是否VIP：${data.is_vip ? '是' : '否'}`
+			: `网易云音乐扫码登录成功，ck已保存！`);
+	}
+	return true;
 }
 
 async function recallMusicMsg(e, key, msg_results) {

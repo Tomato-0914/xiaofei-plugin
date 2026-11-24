@@ -72,6 +72,10 @@ export const helpList = [
     desc: '设置点歌ck'
   },{
     icon: 85,
+    title: '#QQ音乐扫码登录 #网易云扫码登录',
+    desc: '扫码自动获取点歌ck'
+  },{
+    icon: 85,
     title: '#音乐ck检查',
     desc: '查询已设置的点歌ck状态'
   },{
