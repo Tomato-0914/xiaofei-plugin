@@ -41,6 +41,8 @@ export default async function (path, params, cfg) {
     fs.writeFileSync(file, JSON.stringify(data))
   }
   let img = await xiaofei_plugin.puppeteer.screenshot(`${Plugin_Name}/${app}/${tpl}`, data)
+  // 只要图片不发送（由调用方决定怎么发）
+  if (cfg.returnImg) return img
   let ret = true
   if (img) {
     if (img?.type != 'image') img = segment.image(img)

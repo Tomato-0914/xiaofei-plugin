@@ -2,7 +2,7 @@ import fs from 'fs';
 import md5 from 'md5';
 import crypto from 'crypto';
 import fetch from "node-fetch";
-import { Config, Data, Version, Plugin_Path } from '../components/index.js';
+import { Config, Data, Version, Plugin_Path, Common } from '../components/index.js';
 import uploadRecord from '../model/uploadRecord.js';
 import { qqmusicLogin, neteaseLogin } from '../model/musicLogin.js';
 
@@ -290,9 +290,7 @@ export class xiaofei_music extends plugin {
 				await e.reply(`${err.message || err}`);
 				return true;
 			}
-			let msg = [`请使用${login.app}扫描二维码登录${login.name}（2分钟内有效）`, segment.image(`base64://${qr.image}`)];
-			if (e.isGroup) msg.push('\n注意：二维码在群内可被任何人扫描，建议私聊机器人使用');
-			await e.reply(msg);
+			await send_qrlogin_card(e, key, login, qr);
 
 			let scanned = false;
 			let start = Date.now();
@@ -400,6 +398,39 @@ export class xiaofei_music extends plugin {
 		return true;
 	}
 
+}
+
+const music_qrlogin_theme = {
+	qqmusic: { main: '#31C27C', deep: '#13A35F', soft: '#E8F8EF', line: '#BDEBD2', shadow: 'rgba(19,163,95,.22)' },
+	netease: { main: '#F0383A', deep: '#C20C0C', soft: '#FDECEC', line: '#F8C4C4', shadow: 'rgba(194,12,12,.20)' }
+};
+
+/** 发送扫码登录卡片，渲染失败时退回纯二维码图片 */
+async function send_qrlogin_card(e, key, login, qr) {
+	try {
+		if (typeof xiaofei_plugin.puppeteer?.screenshot == 'function') {
+			let expire = new Date(Date.now() + 1000 * 60 * 2).toTimeString().substring(0, 8);
+			let img = await Common.render('music/qrlogin', {
+				theme: music_qrlogin_theme[key],
+				name: login.name,
+				app: login.app,
+				appShort: login.appShort,
+				qr: `data:image/png;base64,${qr.image}`,
+				isGroup: !!e.isGroup,
+				expire,
+				saveId: `qrlogin_${key}`
+			}, { e, scale: 1, returnImg: true });
+			if (img) {
+				await e.reply(img?.type == 'image' ? img : segment.image(img));
+				return;
+			}
+		}
+	} catch (err) {
+		logger.error(`【小飞插件_${login.name}扫码登录】二维码卡片渲染失败，改为发送纯二维码`, err);
+	}
+	let msg = [`请使用${login.app}扫描二维码登录${login.name}（2分钟内有效）`, segment.image(`base64://${qr.image}`)];
+	if (e.isGroup) msg.push('\n注意：二维码在群内可被任何人扫描，建议私聊机器人使用');
+	await e.reply(msg);
 }
 
 async function save_music_qrlogin_ck(e, key, cookies) {

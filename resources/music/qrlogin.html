@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>xiaofei-plugin</title>
+  <style>
+    @font-face {
+      font-family: "HYWH";
+      src: url("{{_res_path}}common/font/HYWH-65W.woff") format("woff"),
+           url("{{_res_path}}common/font/HYWH-65W.ttf") format("truetype");
+    }
+    @font-face {
+      font-family: "Number";
+      src: url("{{_res_path}}common/font/tttgbnumber.woff") format("woff"),
+           url("{{_res_path}}common/font/tttgbnumber.ttf") format("truetype");
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 600px;
+      background: transparent;
+      font-family: "HYWH", "PingFang SC", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container {
+      position: relative;
+      width: 600px;
+      padding: 44px 44px 30px;
+      overflow: hidden;
+      color: #1f2329;
+      background: linear-gradient(165deg, var(--soft) 0%, #ffffff 46%, #ffffff 100%);
+    }
+    .glow {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: .55;
+      pointer-events: none;
+    }
+    .glow.a { width: 320px; height: 320px; right: -110px; top: -120px; background: var(--main); opacity: .35; }
+    .glow.b { width: 260px; height: 260px; left: -120px; top: 300px; background: var(--deep); opacity: .16; }
+    .glow.c { width: 240px; height: 240px; right: -90px; bottom: -110px; background: var(--main); opacity: .14; }
+
+    .header { position: relative; display: flex; align-items: center; gap: 18px; }
+    .logo {
+      flex: none;
+      width: 64px; height: 64px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, var(--main), var(--deep));
+      box-shadow: 0 10px 22px var(--shadow);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo svg { width: 34px; height: 34px; fill: #fff; }
+    .title { font-size: 34px; line-height: 1.2; letter-spacing: 1px; }
+    .subtitle { margin-top: 6px; font-size: 18px; color: #646a73; }
+    .badge {
+      display: inline-block;
+      margin-left: 10px;
+      padding: 3px 12px;
+      border-radius: 999px;
+      font-size: 15px;
+      vertical-align: 6px;
+      color: var(--deep);
+      background: var(--soft);
+      border: 1px solid var(--line);
+    }
+
+    .qr-wrap {
+      position: relative;
+      margin: 34px auto 0;
+      width: 400px;
+      padding: 26px;
+      border-radius: 28px;
+      background: #fff;
+      box-shadow: 0 22px 48px var(--shadow), 0 2px 8px rgba(0, 0, 0, .04);
+    }
+    .qr-frame { position: relative; padding: 14px; }
+    .qr-frame i {
+      position: absolute;
+      width: 38px; height: 38px;
+      border: 5px solid var(--main);
+    }
+    .qr-frame i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 14px; }
+    .qr-frame i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 14px; }
+    .qr-frame i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 14px; }
+    .qr-frame i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 14px; }
+    .qr-frame img {
+      display: block;
+      width: 320px; height: 320px;
+      image-rendering: pixelated;
+      border-radius: 6px;
+    }
+    .qr-tip {
+      margin-top: 16px;
+      text-align: center;
+      font-size: 19px;
+      color: #3a3f45;
+    }
+    .qr-tip b { color: var(--deep); font-weight: normal; }
+
+    .steps {
+      position: relative;
+      display: flex;
+      justify-content: space-between;
+      margin: 34px 6px 0;
+    }
+    .steps::before {
+      content: "";
+      position: absolute;
+      left: 70px; right: 70px; top: 21px;
+      border-top: 2px dashed var(--line);
+    }
+    .step { position: relative; width: 140px; text-align: center; }
+    .step .num {
+      margin: 0 auto;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      font-family: "Number", "HYWH", sans-serif;
+      font-size: 22px;
+      line-height: 44px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--main), var(--deep));
+      box-shadow: 0 6px 14px var(--shadow);
+    }
+    .step .txt { margin-top: 10px; font-size: 17px; color: #3a3f45; }
+
+    .notice {
+      margin-top: 30px;
+      padding: 14px 18px;
+      border-radius: 16px;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #8a5a00;
+      background: #fff7e6;
+      border: 1px solid #ffe2a8;
+    }
+    .meta {
+      margin-top: 22px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 16px;
+      color: #8f959e;
+    }
+    .meta .expire {
+      padding: 5px 14px;
+      border-radius: 999px;
+      color: var(--deep);
+      background: var(--soft);
+    }
+    .meta .expire span { font-family: "Number", "HYWH", sans-serif; }
+    .copyright {
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid #f0f1f2;
+      text-align: center;
+      font-size: 14px;
+      color: #b0b5bb;
+    }
+    .copyright .version { margin-left: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container" id="container"
+       style="--main: {{theme.main}}; --deep: {{theme.deep}}; --soft: {{theme.soft}}; --line: {{theme.line}}; --shadow: {{theme.shadow}};">
+    <div class="glow a"></div>
+    <div class="glow b"></div>
+    <div class="glow c"></div>
+
+    <div class="header">
+      <div class="logo">
+        <svg viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
+      </div>
+      <div>
+        <div class="title">{{name}}<span class="badge">扫码登录</span></div>
+        <div class="subtitle">登录成功后自动保存点歌 ck</div>
+      </div>
+    </div>
+
+    <div class="qr-wrap">
+      <div class="qr-frame">
+        <i></i><i></i><i></i><i></i>
+        <img src="{{qr}}">
+      </div>
+      <div class="qr-tip">请使用 <b>{{app}}</b> 扫一扫</div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="num">1</div><div class="txt">打开{{appShort}}</div></div>
+      <div class="step"><div class="num">2</div><div class="txt">扫描二维码</div></div>
+      <div class="step"><div class="num">3</div><div class="txt">确认登录</div></div>
+    </div>
+
+    {{if isGroup}}
+    <div class="notice">⚠ 群内的二维码任何人都能扫描，建议私聊机器人使用</div>
+    {{/if}}
+
+    <div class="meta">
+      <div>同一设备上可长按图片识别，失败请换设备扫码</div>
+      <div class="expire">有效期至 <span>{{expire}}</span></div>
+    </div>
+
+    <div class="copyright">{{@sys.copyright}}</div>
+  </div>
+</body>
+</html>

@@ -60,6 +60,7 @@ const QQMUSIC_APPID = '100497308';
 export const qqmusicLogin = {
 	name: 'QQ音乐',
 	app: '手机QQ',
+	appShort: 'QQ',
 
 	async create() {
 		let url = `https://ssl.ptlogin2.qq.com/ptqrshow?appid=${QQ_APPID}&e=2&l=M&s=6&d=72&v=4&t=${Math.random()}&daid=${QQ_DAID}&pt_3rd_aid=${QQMUSIC_APPID}`;
@@ -206,13 +207,14 @@ async function makeQRCode(text) {
 	} catch (err) {
 		throw new Error('缺少依赖 qrcode，请在 Yunzai 根目录执行：pnpm install qrcode -w');
 	}
-	let buffer = await QRCode.toBuffer(text, { width: 300, margin: 2 });
+	let buffer = await QRCode.toBuffer(text, { width: 640, margin: 1 });
 	return buffer.toString('base64');
 }
 
 export const neteaseLogin = {
 	name: '网易云音乐',
 	app: '网易云音乐 App',
+	appShort: '网易云',
 
 	async create() {
 		let { res } = await netease_weapi('/login/qrcode/unikey', { type: 1 });
