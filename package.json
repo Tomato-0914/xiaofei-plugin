@@ -4,6 +4,7 @@
 	"type": "module",
 	"dependencies": {
 		"md5": "^2.3.0",
+		"qrcode": "^1.5.4",
 		"silk-wasm": "^3.4.0",
 		"xiaofei-plugin": "file:"
 	}
