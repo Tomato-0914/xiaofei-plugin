@@ -411,6 +411,7 @@ async function send_qrlogin_card(e, key, login, qr) {
 		if (typeof xiaofei_plugin.puppeteer?.screenshot == 'function') {
 			let expire = new Date(Date.now() + 1000 * 60 * 2).toTimeString().substring(0, 8);
 			let img = await Common.render('music/qrlogin', {
+				source: key,
 				theme: music_qrlogin_theme[key],
 				name: login.name,
 				app: login.app,
